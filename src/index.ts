@@ -16,6 +16,9 @@ const cli = meow(
   Usage:
     reserve [name]
 
+  Options:
+    -l, --login: Reset saved session
+
   > You'll be asked about other things!
 `,
   {

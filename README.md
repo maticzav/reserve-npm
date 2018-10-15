@@ -5,8 +5,11 @@
 ## Usage
 
 ```
-Usage:
+  Usage:
     reserve [name]
+
+  Options:
+    -l, --login: Reset saved session
 
   > You'll be asked about other things!
 ```
@@ -16,5 +19,3 @@ Usage:
 ## License
 
 MIT @ Matic Zavadlal
-
-// TODO: tarball gen
