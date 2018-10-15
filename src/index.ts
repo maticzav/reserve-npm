@@ -1,5 +1,9 @@
+#!/usr/bin/env node
+
 import * as path from 'path'
 import * as fs from 'fs'
+import * as tar from 'tar'
+import * as tmp from 'tmp'
 import meow = require('meow')
 import Conf = require('conf')
 import inquirer = require('inquirer')
@@ -14,7 +18,15 @@ const cli = meow(
 
   > You'll be asked about other things!
 `,
-  {},
+  {
+    flags: {
+      login: {
+        alias: 'l',
+        type: 'boolean',
+        default: false,
+      },
+    },
+  },
 )
 
 const npmRegistryURI = `https://registry.npmjs.org`
@@ -68,10 +80,10 @@ async function main(
     return
   }
 
-  const user = config.get('user')
+  let user = config.get('user')
 
-  if (user) {
-    console.log(`Using saved user credentials...`)
+  if (user && !cli.flags.login) {
+    console.log(`Found existing credentials...`)
   } else {
     const { token } = await inquirer.prompt<CredentialsPromptResponse>([
       {
@@ -83,14 +95,15 @@ async function main(
 
     config.set('user', { token })
 
-    console.log('OK!')
+    console.log('Credentials saved...')
   }
+
+  user = config.get('user')
 
   try {
     const pkg = generateEmptyPackage(name)
 
-    const res = await publish(pkg, user)
-    console.log(res)
+    await publish(pkg, user)
 
     console.log(`Package "${name}" successfully reserved!`)
   } catch (err) {
@@ -115,9 +128,14 @@ async function checkPackageNameAvailability(pkg: NpmPackage): Promise<boolean> {
   )
 }
 
+interface File {
+  path: string
+  content: any
+}
+
 interface Package {
   metadata: PackageMetadata
-  files: any
+  files: File[]
 }
 
 interface PackageMetadata {
@@ -130,15 +148,17 @@ async function publish(
   pkg: Package,
   credentials: UserCredentials,
 ): Promise<any> {
+  const tar = await createTarballFromFiles(pkg.files)
+
   const params = {
     metadata: pkg.metadata,
-    body: pkg.files,
+    body: fs.createReadStream(tar),
     auth: {
       token: credentials.token,
     },
   }
 
-  return await new Promise<any>((resolve, reject) =>
+  return new Promise<any>((resolve, reject) =>
     client.publish(npmRegistryURI, params, (err, data) => {
       if (err) {
         reject(err)
@@ -149,27 +169,76 @@ async function publish(
   )
 }
 
+// Files
+
+async function createTarballFromFiles(files: File[]): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const packageTmpPath = tmp.dirSync()
+    const tarTmpPath = tmp.fileSync()
+
+    const tmpFiles = files.map(file => {
+      const tmpFilePath = path.resolve(packageTmpPath.name, file.path)
+      fs.writeFileSync(tmpFilePath, file.content)
+      return tmpFilePath
+    })
+
+    const stream = fs.createWriteStream(tarTmpPath.name)
+
+    stream.on('close', () => {
+      resolve(tarTmpPath.name)
+    })
+
+    tar.create({ gzip: true }, tmpFiles).pipe(stream)
+  })
+}
+
+// Package
+
 function generateEmptyPackage(name: string): Package {
   const metadata = {
     name: name,
     version: '0.0.0',
   }
 
-  const tar = fs.createReadStream('')
+  const readme: File = {
+    path: 'readme.md',
+    content: readmeFile({ package: name }),
+  }
+
+  const packageJSON: File = {
+    path: 'package.json',
+    content: packageJsonFile({ package: name }),
+  }
 
   return {
     metadata,
-    files: tar,
+    files: [readme, packageJSON],
   }
 }
 
-return cacache.tmp.withTmp(npm.tmp, { tmpPrefix: 'fromDir' }, tmpDir => {
-  const target = path.join(tmpDir, 'package.tgz')
-  return pack
-    .packDirectory(pkg, arg, target, null, true)
-    .tap(c => {
-      contents = c
-    })
-    .then(c => !npm.config.get('json') && pack.logContents(c))
-    .then(() => upload(arg, pkg, false, target))
-})
+// Files Generator
+
+interface ReadmeOptions {
+  package: string
+}
+
+const readmeFile = (options: ReadmeOptions) => `
+# ${options.package}
+
+> Hello ✌
+
+You jealous, aye?
+`
+
+interface PackageJsonOptions {
+  package: string
+}
+
+const packageJsonFile = (options: PackageJsonOptions) => `
+{
+  "name": "${options.package}",
+  "version": "0.0.0",
+  "main": "index.js",
+  "license": "MIT"
+}
+`

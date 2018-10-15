@@ -1,4 +1,0 @@
-# Hello ✌
-
-You jealous, aye?
-
