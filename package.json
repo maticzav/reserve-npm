@@ -1,6 +1,7 @@
 {
   "name": "reserve-npm",
-  "version": "1.0.0",
+  "description": "Reserve NPM package name.",
+  "version": "1.0.1",
   "main": "index.js",
   "license": "MIT",
   "scripts": {
